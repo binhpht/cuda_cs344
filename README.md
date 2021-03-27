@@ -6,3 +6,5 @@ Course: Intro to Parallel Programming
 
 28/03/2021. Solution for the problem 1. 
 
+### Learning Resouces
+https://developer.nvidia.com/blog/even-easier-introduction-cuda/
