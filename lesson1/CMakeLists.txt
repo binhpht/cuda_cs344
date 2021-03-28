@@ -18,7 +18,7 @@ IF (ENABLE_PLATFORM_CUDA)
 ENDIF ()
 
 
-ADD_EXECUTABLE(cuda_cs344 main.cpp ../problem_set1/main.cpp)
+ADD_EXECUTABLE(cuda_cs344 main.cpp)
 
 TARGET_SOURCES(cuda_cs344 PRIVATE
                square.cuh
