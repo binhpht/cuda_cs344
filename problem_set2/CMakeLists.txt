@@ -1,8 +1,12 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 3.18)
-PROJECT(cuda_cs344)
+PROJECT(problem_set1 LANGUAGES CUDA CXX )
 
 SET(CMAKE_CXX_STANDARD 14)
 SET(ENABLE_PLATFORM_CUDA ON)
+find_package( OpenCV REQUIRED )
+include_directories( ${OpenCV_INCLUDE_DIRS} )
+set(CMAKE_CXX_FLAGS "-stdlib=libstdc++")
+
 IF (ENABLE_PLATFORM_CUDA)
 	# If not specified otherwise:
 	# Include PTX code for compute capability 6.1 or greater (virtual).
@@ -18,12 +22,19 @@ IF (ENABLE_PLATFORM_CUDA)
 ENDIF ()
 
 
-ADD_EXECUTABLE(cuda_cs344 main.cpp ../problem_set1/main.cpp)
+ADD_EXECUTABLE(problem_set2 main.cpp)
 
-TARGET_SOURCES(cuda_cs344 PRIVATE
-               square.cuh
-               square.cu
+TARGET_SOURCES(problem_set2 PRIVATE
+               HW2.hpp
+               HW2.cpp
+               utils.hpp
+               timer.hpp
+               student_func.cu
+               reference_calc.cpp
+               reference_calc.hpp
+               compare.cpp
+               compare.hpp
                )
-set_target_properties(cuda_cs344 PROPERTIES
+set_target_properties(problem_set2 PROPERTIES
                       CUDA_SEPARABLE_COMPILATION ON)
-TARGET_LINK_LIBRARIES(cuda_cs344 CUDA::cudart CUDA::cuda_driver)
+TARGET_LINK_LIBRARIES(problem_set2 CUDA::cudart CUDA::cuda_driver  ${OpenCV_LIBS})
