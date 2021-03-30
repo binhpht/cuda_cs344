@@ -101,13 +101,13 @@
 //****************************************************************************
 
 #include "utils.hpp"
-
-__global__
-void gaussian_blur(const unsigned char* const inputChannel,
-                   unsigned char* const outputChannel,
-                   int numRows, int numCols,
-                   const float* const filter, const int filterWidth)
-{
+static __device__ __constant__ int offset[9][9] = {
+        {-4, -3, -2, -1, 0, 1, 2, 3, 4},
+        {-4, -3, -2, -1, 0, 1, 2, 3, 4}};
+__global__ void gaussian_blur(const unsigned char *const inputChannel,
+                              unsigned char *const outputChannel,
+                              int numRows, int numCols,
+                              const float *const filter, const int filterWidth) {
 	// TODO
 
 	// NOTE: Be sure to compute any intermediate results in floating point
@@ -129,8 +129,8 @@ void gaussian_blur(const unsigned char* const inputChannel,
 	// the value is out of bounds), you should explicitly clamp the neighbor values you read
 	// to be within the bounds of the image. If this is not clear to you, then please refer
 	// to sequential reference solution for the exact clamping semantics you should follow.
-	const int2 thread_2D_pos = make_int2( blockIdx.x * blockDim.x + threadIdx.x,
-	                                      blockIdx.y * blockDim.y + threadIdx.y);
+	const int2 thread_2D_pos = make_int2(blockIdx.x * blockDim.x + threadIdx.x,
+	                                     blockIdx.y * blockDim.y + threadIdx.y);
 
 	const int thread_1D_pos = thread_2D_pos.y * numCols + thread_2D_pos.x;
 
@@ -139,45 +139,55 @@ void gaussian_blur(const unsigned char* const inputChannel,
 	if (thread_2D_pos.x >= numCols || thread_2D_pos.y >= numRows)
 		return;
 
-	outputChannel[thread_1D_pos] = inputChannel[thread_1D_pos]*0;
+	int current_row, current_col;
+	int index;
+	index = 0;
+	float sum_this = 0.0f;
+	for (int i = 0; i < filterWidth; i++) {
+		for (int j = 0; j < filterWidth; j++) {
+			current_row = thread_1D_pos / numCols + offset[0][i];
+			current_col = thread_1D_pos % numCols + offset[1][j];
+			current_row = min(max(current_row,0),numRows-1);
+			current_col = min(max(current_col,0),numCols-1);
+			sum_this += inputChannel[current_row * numCols + current_col]*filter[(j)*9+i] ;
+			index = index + 1;
+		}
+	}
 
+
+	//	}
+	outputChannel[thread_1D_pos] = sum_this;
 }
 
 //This kernel takes in an image represented as a uchar4 and splits
 //it into three images consisting of only one color channel each
-__global__
-void separateChannels(const uchar4* const inputImageRGBA,
-                      int numRows,
-                      int numCols,
-                      unsigned char* const redChannel,
-                      unsigned char* const greenChannel,
-                      unsigned char* const blueChannel)
-{
+__global__ void separateChannels(const uchar4 *const inputImageRGBA,
+                                 int numRows,
+                                 int numCols,
+                                 unsigned char *const redChannel,
+                                 unsigned char *const greenChannel,
+                                 unsigned char *const blueChannel) {
 	int tid_x = blockIdx.x * blockDim.x + threadIdx.x;
 	int tid_y = blockIdx.y * blockDim.y + threadIdx.y;
 	if (tid_x < numCols && tid_y < numRows) {
-		int index = tid_y*numCols + tid_x;
+		int index = tid_y * numCols + tid_x;
 		redChannel[index] = inputImageRGBA[index].x;
 		greenChannel[index] = inputImageRGBA[index].y;
 		blueChannel[index] = inputImageRGBA[index].z;
-
 	}
-
 }
 
 //This kernel takes in three color channels and recombines them
 //into one image.  The alpha channel is set to 255 to represent
 //that this image has no transparency.
-__global__
-void recombineChannels(const unsigned char* const redChannel,
-                       const unsigned char* const greenChannel,
-                       const unsigned char* const blueChannel,
-                       uchar4* const outputImageRGBA,
-                       int numRows,
-                       int numCols)
-{
-	const int2 thread_2D_pos = make_int2( blockIdx.x * blockDim.x + threadIdx.x,
-	                                      blockIdx.y * blockDim.y + threadIdx.y);
+__global__ void recombineChannels(const unsigned char *const redChannel,
+                                  const unsigned char *const greenChannel,
+                                  const unsigned char *const blueChannel,
+                                  uchar4 *const outputImageRGBA,
+                                  int numRows,
+                                  int numCols) {
+	const int2 thread_2D_pos = make_int2(blockIdx.x * blockDim.x + threadIdx.x,
+	                                     blockIdx.y * blockDim.y + threadIdx.y);
 
 	const int thread_1D_pos = thread_2D_pos.y * numCols + thread_2D_pos.x;
 
@@ -186,9 +196,9 @@ void recombineChannels(const unsigned char* const redChannel,
 	if (thread_2D_pos.x >= numCols || thread_2D_pos.y >= numRows)
 		return;
 
-	unsigned char red   = redChannel[thread_1D_pos];
+	unsigned char red = redChannel[thread_1D_pos];
 	unsigned char green = greenChannel[thread_1D_pos];
-	unsigned char blue  = blueChannel[thread_1D_pos];
+	unsigned char blue = blueChannel[thread_1D_pos];
 
 	//Alpha should be 255 for no transparency
 	uchar4 outputPixel = make_uchar4(red, green, blue, 255);
@@ -197,17 +207,16 @@ void recombineChannels(const unsigned char* const redChannel,
 }
 
 unsigned char *d_red, *d_green, *d_blue;
-float         *d_filter;
+float *d_filter;
 
 void allocateMemoryAndCopyToGPU(const size_t numRowsImage, const size_t numColsImage,
-                                const float* const h_filter, const size_t filterWidth)
-{
+                                const float *const h_filter, const size_t filterWidth) {
 
 	//allocate memory for the three different channels
 	//original
-	checkCudaErrors(cudaMalloc(&d_red,   sizeof(unsigned char) * numRowsImage * numColsImage));
+	checkCudaErrors(cudaMalloc(&d_red, sizeof(unsigned char) * numRowsImage * numColsImage));
 	checkCudaErrors(cudaMalloc(&d_green, sizeof(unsigned char) * numRowsImage * numColsImage));
-	checkCudaErrors(cudaMalloc(&d_blue,  sizeof(unsigned char) * numRowsImage * numColsImage));
+	checkCudaErrors(cudaMalloc(&d_blue, sizeof(unsigned char) * numRowsImage * numColsImage));
 
 	//TODO:
 	//Allocate memory for the filter on the GPU
@@ -216,46 +225,46 @@ void allocateMemoryAndCopyToGPU(const size_t numRowsImage, const size_t numColsI
 	//be sure to use checkCudaErrors like the above examples to
 	//be able to tell if anything goes wrong
 	//IMPORTANT: Notice that we pass a pointer to a pointer to cudaMalloc
-	checkCudaErrors(cudaMalloc(&d_filter,  sizeof(unsigned char) * filterWidth * filterWidth));
+	checkCudaErrors(cudaMalloc(&d_filter, sizeof(float) * filterWidth * filterWidth));
 
 	//TODO:
 	//Copy the filter on the host (h_filter) to the memory you just allocafvted
 	//on the GPU.  cudaMemcpy(dst, src, numBytes, cudaMemcpyHostToDevice);
 	//Remember to use checkCudaErrors!
 
-	checkCudaErrors(cudaMemcpy(d_filter, h_filter, sizeof(unsigned char) * filterWidth* filterWidth, cudaMemcpyHostToDevice));
-
+	checkCudaErrors(cudaMemcpy(d_filter, h_filter, sizeof(float) * filterWidth * filterWidth, cudaMemcpyHostToDevice));
 }
 
-void your_gaussian_blur(const uchar4 * const h_inputImageRGBA, uchar4 * const d_inputImageRGBA,
-                        uchar4* const d_outputImageRGBA, const size_t numRows, const size_t numCols,
+void your_gaussian_blur(const uchar4 *const h_inputImageRGBA, uchar4 *const d_inputImageRGBA,
+                        uchar4 *const d_outputImageRGBA, const size_t numRows, const size_t numCols,
                         unsigned char *d_redBlurred,
                         unsigned char *d_greenBlurred,
                         unsigned char *d_blueBlurred,
-                        const int filterWidth)
-{
+                        const int filterWidth) {
 	//TODO: Set reasonable block size (i.e., number of threads per block)
-	const dim3 blockSize(numCols/32 + 1,numRows/32 + 1,1);
+	const dim3 blockSize(numCols / 32 + 1, numRows / 32 + 1, 1);
 
 	//TODO:
 	//Compute correct grid size (i.e., number of blocks per kernel launch)
 	//from the image size and and block size.
-	const dim3 gridSize(32,32,1);
+	const dim3 gridSize(32, 32, 1);
 
 	//TODO: Launch a kernel for separating the RGBA image into different color channels
-	separateChannels<<<gridSize, blockSize>>>(d_inputImageRGBA,numRows,numCols,d_red, d_green, d_blue);
+	separateChannels<<<gridSize, blockSize>>>(d_inputImageRGBA, numRows, numCols, d_red, d_green, d_blue);
 	// Call cudaDeviceSynchronize(), then call checkCudaErrors() immediately after
 	// launching your kernel to make sure that you didn't make any mistakes.
-	cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
+	cudaDeviceSynchronize();
+	checkCudaErrors(cudaGetLastError());
 
 	//TODO: Call your convolution kernel here 3 times, once for each color channel.
-	gaussian_blur<<<gridSize, blockSize>>>(d_red,d_redBlurred, numRows,numCols,d_filter, filterWidth);
-	gaussian_blur<<<gridSize, blockSize>>>(d_green,d_greenBlurred, numRows,numCols,d_filter, filterWidth);
-	gaussian_blur<<<gridSize, blockSize>>>(d_blue,d_blueBlurred, numRows,numCols,d_filter, filterWidth);
+	gaussian_blur<<<gridSize, blockSize>>>(d_red, d_redBlurred, numRows, numCols, d_filter, filterWidth);
+	gaussian_blur<<<gridSize, blockSize>>>(d_green, d_greenBlurred, numRows, numCols, d_filter, filterWidth);
+	gaussian_blur<<<gridSize, blockSize>>>(d_blue, d_blueBlurred, numRows, numCols, d_filter, filterWidth);
 
 	// Again, call cudaDeviceSynchronize(), then call checkCudaErrors() immediately after
 	// launching your kernel to make sure that you didn't make any mistakes.
-	cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
+	cudaDeviceSynchronize();
+	checkCudaErrors(cudaGetLastError());
 
 	// Now we recombine your results. We take care of launching this kernel for you.
 	//
@@ -267,8 +276,8 @@ void your_gaussian_blur(const uchar4 * const h_inputImageRGBA, uchar4 * const d_
 	                                           d_outputImageRGBA,
 	                                           numRows,
 	                                           numCols);
-	cudaDeviceSynchronize(); checkCudaErrors(cudaGetLastError());
-
+	cudaDeviceSynchronize();
+	checkCudaErrors(cudaGetLastError());
 }
 
 
