@@ -1,3 +1,4 @@
 ADD_SUBDIRECTORY(lesson1)
 ADD_SUBDIRECTORY(problem_set1)
 ADD_SUBDIRECTORY(problem_set2)
+ADD_SUBDIRECTORY(lesson4_reduce)

@@ -140,8 +140,7 @@ __global__ void gaussian_blur(const unsigned char *const inputChannel,
 		return;
 
 	int current_row, current_col;
-	int index;
-	index = 0;
+
 	float sum_this = 0.0f;
 	for (int i = 0; i < filterWidth; i++) {
 		for (int j = 0; j < filterWidth; j++) {
@@ -150,7 +149,6 @@ __global__ void gaussian_blur(const unsigned char *const inputChannel,
 			current_row = min(max(current_row,0),numRows-1);
 			current_col = min(max(current_col,0),numCols-1);
 			sum_this += inputChannel[current_row * numCols + current_col]*filter[(j)*9+i] ;
-			index = index + 1;
 		}
 	}
 
